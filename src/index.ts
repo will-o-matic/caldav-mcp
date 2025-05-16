@@ -6,7 +6,7 @@ import { z } from "zod";
 
 const server = new McpServer({
   name: "caldav-mcp",
-  version: "1.0.0"
+  version: "0.1.0"
 });
 
 async function main() {
