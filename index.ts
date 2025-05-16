@@ -13,11 +13,11 @@ const server = new McpServer({
 
 async function main() {
   const client = await CalDAVClient.create({
-    baseUrl: process.env.CALDAV_BASE_URL,
+    baseUrl: process.env.CALDAV_BASE_URL || "",
     auth: {
       type: "basic",
-      username: process.env.CALDAV_USERNAME,
-      password: process.env.CALDAV_PASSWORD
+      username: process.env.CALDAV_USERNAME || "",
+      password: process.env.CALDAV_PASSWORD || ""
     }
   });
 
@@ -36,12 +36,13 @@ async function main() {
   // Async tool with external API call
   server.tool(
     "create-event",
-    {summary: z.string(), start: z.date(), end: z.date()},
+    {summary: z.string(), start: z.string().datetime(), end: z.string().datetime()},
     async ({summary, start, end}) => {
+      console.log("Creating event: ", summary, start, end)
       const event = await client.createEvent(calendar.url, {
         summary: summary,
-        start: start,
-        end: end,
+        start: new Date(start),
+        end: new Date(end),
       });
       return {
         content: [{type: "text", text: event.uid}]
@@ -52,6 +53,8 @@ async function main() {
   // Start receiving messages on stdin and sending messages on stdout
   const transport = new StdioServerTransport();
   await server.connect(transport);
+
+  console.log("MCPServer started");
 }
 
 main()
