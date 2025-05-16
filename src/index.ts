@@ -58,7 +58,7 @@ async function main() {
       });
 
       return {
-        content: [{type: "text", text: filteredEvents.map(e => e.summary).join("\n")}]
+        content: [{type: "text", text: filteredEvents.map(e => `${e.summary}\nStart: ${e.start}\nEnd: ${e.end}`).join("\n")}]
       };
     }
   );
