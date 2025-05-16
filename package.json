@@ -1,0 +1,17 @@
+{
+  "name": "cal-mcp",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "module": "esnext",
+  "target": "esnext",
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "ts-caldav": "^0.1.3"
+  }
+}
