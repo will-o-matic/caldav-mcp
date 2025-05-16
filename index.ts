@@ -27,7 +27,7 @@ async function main() {
   const calendar = calendars[0];
 
 // Fetch events
-  const events = await client.getEvents(calendar.url);
+
 
   // console.log(events);
 
@@ -46,6 +46,18 @@ async function main() {
       });
       return {
         content: [{type: "text", text: event.uid}]
+      };
+    }
+  );
+
+  server.tool(
+    "list-events",
+    {start: z.string().datetime(), end: z.string().datetime()},
+    async ({start, end}) => {
+      console.log("Listing events: ", start, end)
+      const events = await client.getEvents(calendar.url);
+      return {
+        content: [{type: "text", text: events.map(e => e.summary).join("\n")}]
       };
     }
   );

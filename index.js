@@ -33,7 +33,6 @@ function main() {
         const calendars = yield client.getCalendars();
         const calendar = calendars[0];
         // Fetch events
-        const events = yield client.getEvents(calendar.url);
         // console.log(events);
         //
         // Async tool with external API call
@@ -46,6 +45,13 @@ function main() {
             });
             return {
                 content: [{ type: "text", text: event.uid }]
+            };
+        }));
+        server.tool("list-events", { start: zod_1.z.string().datetime(), end: zod_1.z.string().datetime() }, (_a) => __awaiter(this, [_a], void 0, function* ({ start, end }) {
+            console.log("Listing events: ", start, end);
+            const events = yield client.getEvents(calendar.url);
+            return {
+                content: [{ type: "text", text: events.map(e => e.summary).join("\n") }]
             };
         }));
         // Start receiving messages on stdin and sending messages on stdout
