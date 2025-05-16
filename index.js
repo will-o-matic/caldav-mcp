@@ -49,9 +49,18 @@ function main() {
         }));
         server.tool("list-events", { start: zod_1.z.string().datetime(), end: zod_1.z.string().datetime() }, (_a) => __awaiter(this, [_a], void 0, function* ({ start, end }) {
             console.log("Listing events: ", start, end);
-            const events = yield client.getEvents(calendar.url);
+            const allEvents = yield client.getEvents(calendar.url);
+            // Filter events that fall within the specified time range
+            const startDate = new Date(start);
+            const endDate = new Date(end);
+            const filteredEvents = allEvents.filter(event => {
+                const eventStart = new Date(event.start);
+                const eventEnd = new Date(event.end);
+                // Event starts before the end time and ends after the start time
+                return eventStart <= endDate && eventEnd >= startDate;
+            });
             return {
-                content: [{ type: "text", text: events.map(e => e.summary).join("\n") }]
+                content: [{ type: "text", text: filteredEvents.map(e => e.summary).join("\n") }]
             };
         }));
         // Start receiving messages on stdin and sending messages on stdout
