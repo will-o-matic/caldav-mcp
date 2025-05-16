@@ -1,8 +1,9 @@
 {
   "name": "cal-mcp",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
+    "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "module": "esnext",
