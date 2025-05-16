@@ -26,7 +26,6 @@ async function main() {
     "create-event",
     {summary: z.string(), start: z.string().datetime(), end: z.string().datetime()},
     async ({summary, start, end}) => {
-      console.log("Creating event: ", summary, start, end)
       const event = await client.createEvent(calendar.url, {
         summary: summary,
         start: new Date(start),
@@ -42,7 +41,6 @@ async function main() {
     "list-events",
     {start: z.string().datetime(), end: z.string().datetime()},
     async ({start, end}) => {
-      console.log("Listing events: ", start, end)
       const allEvents = await client.getEvents(calendar.url);
 
       // Filter events that fall within the specified time range
@@ -66,8 +64,6 @@ async function main() {
   // Start receiving messages on stdin and sending messages on stdout
   const transport = new StdioServerTransport();
   await server.connect(transport);
-
-  console.log("MCPServer started");
 }
 
 main()
