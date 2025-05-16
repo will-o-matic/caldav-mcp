@@ -1,6 +1,15 @@
 import 'dotenv/config'
 import { CalDAVClient } from "ts-caldav";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
 
+
+// Create an MCP server
+const server = new McpServer({
+  name: "Demo",
+  version: "1.0.0"
+});
 
 async function main() {
   const client = await CalDAVClient.create({
@@ -20,13 +29,29 @@ async function main() {
 // Fetch events
   const events = await client.getEvents(calendar.url);
 
-  console.log(events);
+  // console.log(events);
 
-  // await client.createEvent(calendar.url, {
-  //   summary: "Geiles Team Meeting",
-  //   start: new Date(),
-  //   end: new Date(Date.now() + 3600000), // +1h
-  // });
+  //
+
+  // Async tool with external API call
+  server.tool(
+    "create-event",
+    {summary: z.string(), start: z.date(), end: z.date()},
+    async ({summary, start, end}) => {
+      const event = await client.createEvent(calendar.url, {
+        summary: summary,
+        start: start,
+        end: end,
+      });
+      return {
+        content: [{type: "text", text: event.uid}]
+      };
+    }
+  );
+
+  // Start receiving messages on stdin and sending messages on stdout
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
 }
 
 main()
