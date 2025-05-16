@@ -1,5 +1,6 @@
 {
-  "name": "cal-mcp",
+  "name": "caldav-mcp",
+  "description": "A CalDAV client using Model Context Protocol (MCP) to expose calendar operations as tools for AI assistants.",
   "version": "1.0.0",
   "main": "dist/index.js",
   "scripts": {
@@ -8,9 +9,8 @@
   },
   "module": "esnext",
   "target": "esnext",
-  "author": "",
+  "author": "Dominik Grusemann",
   "license": "MIT",
-  "description": "",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.3",
     "dotenv": "^16.5.0",
