@@ -17,8 +17,6 @@
     "lint": "eslint src/",
     "watch": "tsc --watch"
   },
-  "module": "esnext",
-  "target": "esnext",
   "author": "Dominik Grusemann",
   "license": "MIT",
   "dependencies": {
