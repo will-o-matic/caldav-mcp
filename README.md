@@ -1,4 +1,4 @@
-# cal-mcp
+# caldav-mcp
 
 A CalDAV client using Model Context Protocol (MCP) to expose calendar operations as tools for AI assistants.
 
