@@ -1,6 +1,6 @@
 # caldav-mcp
 
-A CalDAV client using Model Context Protocol (MCP) to expose calendar operations as tools for AI assistants.
+A CalDAV Model Context Protocol (MCP) server to expose calendar operations as tools for AI assistants.
 
 ## Features
 
@@ -20,6 +20,27 @@ npm install
 CALDAV_BASE_URL=<CalDAV server URL>
 CALDAV_USERNAME=<CalDAV username>
 CALDAV_PASSWORD=<CalDAV password>
+```
+
+## Setup in Claude Desktop
+
+```
+{
+  "mcpServers": {
+    ...,
+    "calendar": {
+      "command": "npx",
+      "args": [
+        "caldav-mcp"
+      ],
+      "env": {
+        "CALDAV_BASE_URL": "<CalDAV server URL>",
+        "CALDAV_USERNAME": "<CalDAV username>",
+        "CALDAV_PASSWORD": "<CalDAV password>"
+      }
+    }
+  }
+}
 ```
 
 ## Usage
