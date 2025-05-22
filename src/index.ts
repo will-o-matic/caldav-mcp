@@ -93,7 +93,14 @@ export class CalendarService {
   }
 
   async createEvent(summary: string, start: string, end: string, timezone: string, recurrence?: string, location?: string, calendarName?: string, reminders?: { action: 'DISPLAY' | 'AUDIO' | 'EMAIL', trigger: string, description?: string }[]) {
+    log('Creating event with parameters:', { summary, start, end, timezone, recurrence, location, calendarName, reminders });
+    
     const calendar = this.getCalendar(calendarName);
+    log('Selected calendar:', { displayName: calendar.displayName, url: calendar.url });
+    
+    // Log the full calendar object to see all available properties
+    log('Full calendar object:', JSON.stringify(calendar, null, 2));
+    
     const formatDate = (date: string) => {
       const d = new Date(date);
       // Format as YYYYMMDDTHHMMSS without timezone conversion
@@ -116,10 +123,7 @@ TRIGGER:${reminder.trigger}${description}
 END:VALARM`;
     }).join('\n') || '';
 
-    const event = await this.client.createCalendarObject({
-      calendar,
-      filename: `${summary}-${Date.now()}.ics`,
-      iCalString: `BEGIN:VCALENDAR
+    const iCalString = `BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//tsdav//tsdav 1.0.0//EN
 BEGIN:VEVENT
@@ -127,9 +131,41 @@ SUMMARY:${summary}
 DTSTART;${formatDate(start)}
 DTEND;${formatDate(end)}${recurrence ? `\nRRULE:${recurrence}` : ''}${location ? `\nLOCATION:${location}` : ''}${alarmComponents ? `\n${alarmComponents}` : ''}
 END:VEVENT
-END:VCALENDAR`
+END:VCALENDAR`;
+
+    log('Generated iCal string:', iCalString);
+    
+    // Construct the full URL that will be used
+    const filename = `${encodeURIComponent(summary)}-${Date.now()}.ics`;
+    const fullUrl = new URL(filename, calendar.url).toString();
+    log('Full URL that will be used:', fullUrl);
+    
+    log('Attempting to create calendar object with:', { 
+      calendarUrl: calendar.url,
+      filename,
+      fullUrl
     });
-    return event.url;
+
+    try {
+      const event = await this.client.createCalendarObject({
+        calendar,
+        filename,
+        iCalString
+      });
+      log('Successfully created calendar object:', { url: event.url });
+      return event.url;
+    } catch (error) {
+      log('Error creating calendar object:', error);
+      // Log additional error details if available
+      if (error instanceof Error) {
+        log('Error details:', {
+          name: error.name,
+          message: error.message,
+          stack: error.stack
+        });
+      }
+      throw error;
+    }
   }
 
   async listEvents(start: string, end: string, calendarName?: string) {
