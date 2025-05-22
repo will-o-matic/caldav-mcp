@@ -131,14 +131,44 @@ END:VCALENDAR`
               return false;
             }
 
-            const eventStart = new Date(event.data.split('DTSTART:')[1].split('\n')[0].replace(/[-:]/g, ''));
-            const eventEnd = new Date(event.data.split('DTEND:')[1].split('\n')[0].replace(/[-:]/g, ''));
-            const summary = event.data.split('SUMMARY:')[1].split('\n')[0];
+            // Extract the date strings with their timezone information
+            const startMatch = event.data.match(/DTSTART(?:;TZID=([^:]+))?:([^\n]+)/);
+            const endMatch = event.data.match(/DTEND(?:;TZID=([^:]+))?:([^\n]+)/);
+            const summaryMatch = event.data.match(/SUMMARY:([^\n]+)/);
+
+            if (!startMatch || !endMatch || !summaryMatch) {
+              calendarLog('Could not parse event data');
+              return false;
+            }
+
+            // Parse the dates, handling timezone information
+            const startTz = startMatch[1];
+            const endTz = endMatch[1];
+            const startDateStr = startMatch[2];
+            const endDateStr = endMatch[2];
+            const summary = summaryMatch[1];
+
+            // Format the date string to be ISO-compatible
+            const formatDate = (dateStr: string, tz?: string) => {
+              // Convert YYYYMMDDTHHMMSS to YYYY-MM-DDTHH:MM:SS
+              const formatted = dateStr.replace(
+                /(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/,
+                '$1-$2-$3T$4:$5:$6'
+              );
+              return tz ? `${formatted} (${tz})` : formatted;
+            };
+
+            const eventStart = formatDate(startDateStr, startTz);
+            const eventEnd = formatDate(endDateStr, endTz);
             
             calendarLog('Event details - Summary: %s, Start: %s, End: %s', 
-              summary, eventStart.toISOString(), eventEnd.toISOString());
+              summary, eventStart, eventEnd);
 
-            return eventStart <= endDate && eventEnd >= startDate;
+            // For comparison, convert to UTC
+            const startUTC = new Date(startDateStr + (startTz ? 'Z' : ''));
+            const endUTC = new Date(endDateStr + (endTz ? 'Z' : ''));
+            
+            return startUTC <= endDate && endUTC >= startDate;
           } catch (error) {
             calendarLog('Error processing event: %s', error);
             return false;
@@ -154,9 +184,33 @@ END:VCALENDAR`
                 calendarLog('Event data is undefined or null');
                 return 'Error: Event data is missing';
               }
-              const summary = e.data.split('SUMMARY:')[1].split('\n')[0];
-              const start = e.data.split('DTSTART:')[1].split('\n')[0].replace(/[-:]/g, '');
-              const end = e.data.split('DTEND:')[1].split('\n')[0].replace(/[-:]/g, '');
+              const startMatch = e.data.match(/DTSTART(?:;TZID=([^:]+))?:([^\n]+)/);
+              const endMatch = e.data.match(/DTEND(?:;TZID=([^:]+))?:([^\n]+)/);
+              const summaryMatch = e.data.match(/SUMMARY:([^\n]+)/);
+
+              if (!startMatch || !endMatch || !summaryMatch) {
+                return 'Error: Could not parse event data';
+              }
+
+              const startTz = startMatch[1];
+              const endTz = endMatch[1];
+              const startDateStr = startMatch[2];
+              const endDateStr = endMatch[2];
+              const summary = summaryMatch[1];
+
+              // Format the date string to be ISO-compatible
+              const formatDate = (dateStr: string, tz?: string) => {
+                // Convert YYYYMMDDTHHMMSS to YYYY-MM-DDTHH:MM:SS
+                const formatted = dateStr.replace(
+                  /(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/,
+                  '$1-$2-$3T$4:$5:$6'
+                );
+                return tz ? `${formatted} (${tz})` : formatted;
+              };
+
+              const start = formatDate(startDateStr, startTz);
+              const end = formatDate(endDateStr, endTz);
+              
               return `${summary}\nStart: ${start}\nEnd: ${end}`;
             } catch (error) {
               calendarLog('Error formatting event: %s', error);
