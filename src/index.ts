@@ -249,7 +249,23 @@ async function main() {
 
     server.tool(
       "create-event",
-      {summary: z.string(), start: z.string().datetime(), end: z.string().datetime()},
+      {
+        summary: z.string().describe("The title or summary of the calendar event"),
+        start: z.string().datetime().describe(
+          "The start time of the event in ISO 8601 format.\n" +
+          "Examples:\n" +
+          "- 2024-03-20T15:30:00Z (UTC time)\n" +
+          "- 2024-03-20T15:30:00+00:00 (UTC time with offset)\n" +
+          "- 2024-03-20T15:30:00-05:00 (Eastern Time)"
+        ),
+        end: z.string().datetime().describe(
+          "The end time of the event in ISO 8601 format.\n" +
+          "Examples:\n" +
+          "- 2024-03-20T16:30:00Z (UTC time)\n" +
+          "- 2024-03-20T16:30:00+00:00 (UTC time with offset)\n" +
+          "- 2024-03-20T16:30:00-05:00 (Eastern Time)"
+        )
+      },
       async ({summary, start, end}) => {
         const eventUrl = await calendarService.createEvent(summary, start, end);
         return {
@@ -260,7 +276,22 @@ async function main() {
 
     server.tool(
       "list-events",
-      {start: z.string().datetime(), end: z.string().datetime()},
+      {
+        start: z.string().datetime().describe(
+          "The start of the time range to search for events in ISO 8601 format.\n" +
+          "Examples:\n" +
+          "- 2024-03-20T00:00:00Z (UTC time)\n" +
+          "- 2024-03-20T00:00:00+00:00 (UTC time with offset)\n" +
+          "- 2024-03-20T00:00:00-05:00 (Eastern Time)"
+        ),
+        end: z.string().datetime().describe(
+          "The end of the time range to search for events in ISO 8601 format.\n" +
+          "Examples:\n" +
+          "- 2024-03-21T00:00:00Z (UTC time)\n" +
+          "- 2024-03-21T00:00:00+00:00 (UTC time with offset)\n" +
+          "- 2024-03-21T00:00:00-05:00 (Eastern Time)"
+        )
+      },
       async ({start, end}) => {
         const events = await calendarService.listEvents(start, end);
         return {
