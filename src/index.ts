@@ -81,7 +81,7 @@ export class CalendarService {
     ).join('\n');
   }
 
-  async createEvent(summary: string, start: string, end: string) {
+  async createEvent(summary: string, start: string, end: string, recurrence?: string) {
     const event = await this.client.createCalendarObject({
       calendar: this.calendar,
       filename: `${summary}-${Date.now()}.ics`,
@@ -91,7 +91,7 @@ PRODID:-//tsdav//tsdav 1.0.0//EN
 BEGIN:VEVENT
 SUMMARY:${summary}
 DTSTART:${new Date(start).toISOString().replace(/[-:]/g, '').split('.')[0]}Z
-DTEND:${new Date(end).toISOString().replace(/[-:]/g, '').split('.')[0]}Z
+DTEND:${new Date(end).toISOString().replace(/[-:]/g, '').split('.')[0]}Z${recurrence ? `\nRRULE:${recurrence}` : ''}
 END:VEVENT
 END:VCALENDAR`
     });
@@ -264,10 +264,19 @@ async function main() {
           "- 2024-03-20T16:30:00Z (UTC time)\n" +
           "- 2024-03-20T16:30:00+00:00 (UTC time with offset)\n" +
           "- 2024-03-20T16:30:00-05:00 (Eastern Time)"
+        ),
+        recurrence: z.string().optional().describe(
+          "Optional recurrence rule in iCalendar RRULE format.\n" +
+          "Examples:\n" +
+          "- FREQ=DAILY (daily recurrence)\n" +
+          "- FREQ=WEEKLY;BYDAY=MO,WE,FR (every Monday, Wednesday, Friday)\n" +
+          "- FREQ=MONTHLY;BYDAY=1MO (first Monday of each month)\n" +
+          "- FREQ=YEARLY;COUNT=5 (yearly for 5 occurrences)\n" +
+          "- FREQ=WEEKLY;UNTIL=20241231T235959Z (weekly until end of 2024)"
         )
       },
-      async ({summary, start, end}) => {
-        const eventUrl = await calendarService.createEvent(summary, start, end);
+      async ({summary, start, end, recurrence}) => {
+        const eventUrl = await calendarService.createEvent(summary, start, end, recurrence);
         return {
           content: [{type: "text", text: eventUrl}]
         };
