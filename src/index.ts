@@ -81,7 +81,19 @@ export class CalendarService {
     ).join('\n');
   }
 
-  async createEvent(summary: string, start: string, end: string, recurrence?: string, location?: string) {
+  async createEvent(summary: string, start: string, end: string, timezone: string, recurrence?: string, location?: string) {
+    const formatDate = (date: string) => {
+      const d = new Date(date);
+      // Format as YYYYMMDDTHHMMSS without timezone conversion
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      const seconds = String(d.getSeconds()).padStart(2, '0');
+      return `TZID=${timezone}:${year}${month}${day}T${hours}${minutes}${seconds}`;
+    };
+
     const event = await this.client.createCalendarObject({
       calendar: this.calendar,
       filename: `${summary}-${Date.now()}.ics`,
@@ -90,8 +102,8 @@ VERSION:2.0
 PRODID:-//tsdav//tsdav 1.0.0//EN
 BEGIN:VEVENT
 SUMMARY:${summary}
-DTSTART:${new Date(start).toISOString().replace(/[-:]/g, '').split('.')[0]}Z
-DTEND:${new Date(end).toISOString().replace(/[-:]/g, '').split('.')[0]}Z${recurrence ? `\nRRULE:${recurrence}` : ''}${location ? `\nLOCATION:${location}` : ''}
+DTSTART;${formatDate(start)}
+DTEND;${formatDate(end)}${recurrence ? `\nRRULE:${recurrence}` : ''}${location ? `\nLOCATION:${location}` : ''}
 END:VEVENT
 END:VCALENDAR`
     });
@@ -251,19 +263,25 @@ async function main() {
       "create-event",
       {
         summary: z.string().describe("The title or summary of the calendar event"),
-        start: z.string().datetime().describe(
+        start: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/).describe(
           "The start time of the event in ISO 8601 format.\n" +
           "Examples:\n" +
-          "- 2024-03-20T15:30:00Z (UTC time)\n" +
-          "- 2024-03-20T15:30:00+00:00 (UTC time with offset)\n" +
-          "- 2024-03-20T15:30:00-05:00 (Eastern Time)"
+          "- 2024-03-20T15:30:00\n" +
+          "Note: The timezone will be applied from the timezone parameter."
         ),
-        end: z.string().datetime().describe(
+        end: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/).describe(
           "The end time of the event in ISO 8601 format.\n" +
           "Examples:\n" +
-          "- 2024-03-20T16:30:00Z (UTC time)\n" +
-          "- 2024-03-20T16:30:00+00:00 (UTC time with offset)\n" +
-          "- 2024-03-20T16:30:00-05:00 (Eastern Time)"
+          "- 2024-03-20T16:30:00\n" +
+          "Note: The timezone will be applied from the timezone parameter."
+        ),
+        timezone: z.string().describe(
+          "The timezone for the event.\n" +
+          "Examples:\n" +
+          "- America/New_York\n" +
+          "- Europe/London\n" +
+          "- Asia/Tokyo\n" +
+          "Must be a valid IANA timezone name."
         ),
         recurrence: z.string().optional().describe(
           "Optional recurrence rule in iCalendar RRULE format.\n" +
@@ -283,8 +301,8 @@ async function main() {
           "- Building 4, Floor 2"
         )
       },
-      async ({summary, start, end, recurrence, location}) => {
-        const eventUrl = await calendarService.createEvent(summary, start, end, recurrence, location);
+      async ({summary, start, end, timezone, recurrence, location}) => {
+        const eventUrl = await calendarService.createEvent(summary, start, end, timezone, recurrence, location);
         return {
           content: [{type: "text", text: eventUrl}]
         };
