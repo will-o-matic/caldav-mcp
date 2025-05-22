@@ -13,12 +13,13 @@ const calendarLog = debug('caldav-mcp:calendar');
 // Core calendar functionality that can be used by both CLI and HTTP interfaces
 export class CalendarService {
   private client: any;
-  private calendar: any;
+  private calendars: any[];
 
   constructor() {
     if (!process.env.CALDAV_BASE_URL) {
       throw new Error('CALDAV_BASE_URL environment variable is required');
     }
+    this.calendars = [];
   }
 
   async initialize() {
@@ -64,13 +65,23 @@ export class CalendarService {
     if (!calendars || calendars.length === 0) {
       throw new Error('No calendars found');
     }
-    this.calendar = calendars[0];
-    log('Using calendar:', this.calendar.displayName);
+    this.calendars = calendars;
+    log('Found calendars:', calendars.map((c: { displayName: string }) => c.displayName).join(', '));
+  }
+
+  private getCalendar(calendarName?: string) {
+    if (!calendarName) {
+      return this.calendars[0];
+    }
+    const calendar = this.calendars.find(cal => cal.displayName === calendarName);
+    if (!calendar) {
+      throw new Error(`Calendar "${calendarName}" not found`);
+    }
+    return calendar;
   }
 
   async listCalendars() {
-    const calendars = await this.client.fetchCalendars();
-    return calendars.map((cal: { displayName: string; url: string; description?: string; components?: string[]; timezone?: string; calendarColor?: string }) => 
+    return this.calendars.map((cal: { displayName: string; url: string; description?: string; components?: string[]; timezone?: string; calendarColor?: string }) => 
       `Calendar: ${cal.displayName}\n` +
       `URL: ${cal.url}\n` +
       `Description: ${cal.description || 'No description'}\n` +
@@ -81,7 +92,8 @@ export class CalendarService {
     ).join('\n');
   }
 
-  async createEvent(summary: string, start: string, end: string, timezone: string, recurrence?: string, location?: string) {
+  async createEvent(summary: string, start: string, end: string, timezone: string, recurrence?: string, location?: string, calendarName?: string) {
+    const calendar = this.getCalendar(calendarName);
     const formatDate = (date: string) => {
       const d = new Date(date);
       // Format as YYYYMMDDTHHMMSS without timezone conversion
@@ -95,7 +107,7 @@ export class CalendarService {
     };
 
     const event = await this.client.createCalendarObject({
-      calendar: this.calendar,
+      calendar,
       filename: `${summary}-${Date.now()}.ics`,
       iCalString: `BEGIN:VCALENDAR
 VERSION:2.0
@@ -110,11 +122,12 @@ END:VCALENDAR`
     return event.url;
   }
 
-  async listEvents(start: string, end: string) {
-    calendarLog('Fetching events between %s and %s', start, end);
+  async listEvents(start: string, end: string, calendarName?: string) {
+    const calendar = this.getCalendar(calendarName);
+    calendarLog('Fetching events between %s and %s from calendar %s', start, end, calendar.displayName);
     
     const calendarObjects = await this.client.fetchCalendarObjects({
-      calendar: this.calendar,
+      calendar,
     });
     
     calendarLog('Retrieved %d calendar objects', calendarObjects.length);
@@ -299,10 +312,15 @@ async function main() {
           "- 123 Main St, City, State\n" +
           "- Virtual Meeting (Zoom)\n" +
           "- Building 4, Floor 2"
+        ),
+        calendarName: z.string().optional().describe(
+          "Optional name of the calendar to create the event in.\n" +
+          "If not specified, uses the first available calendar.\n" +
+          "Use list-calendars to see available calendar names."
         )
       },
-      async ({summary, start, end, timezone, recurrence, location}) => {
-        const eventUrl = await calendarService.createEvent(summary, start, end, timezone, recurrence, location);
+      async ({summary, start, end, timezone, recurrence, location, calendarName}) => {
+        const eventUrl = await calendarService.createEvent(summary, start, end, timezone, recurrence, location, calendarName);
         return {
           content: [{type: "text", text: eventUrl}]
         };
@@ -325,10 +343,15 @@ async function main() {
           "- 2024-03-21T00:00:00Z (UTC time)\n" +
           "- 2024-03-21T00:00:00+00:00 (UTC time with offset)\n" +
           "- 2024-03-21T00:00:00-05:00 (Eastern Time)"
+        ),
+        calendarName: z.string().optional().describe(
+          "Optional name of the calendar to list events from.\n" +
+          "If not specified, uses the first available calendar.\n" +
+          "Use list-calendars to see available calendar names."
         )
       },
-      async ({start, end}) => {
-        const events = await calendarService.listEvents(start, end);
+      async ({start, end, calendarName}) => {
+        const events = await calendarService.listEvents(start, end, calendarName);
         return {
           content: [{type: "text", text: events}]
         };
