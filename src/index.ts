@@ -81,7 +81,7 @@ export class CalendarService {
     ).join('\n');
   }
 
-  async createEvent(summary: string, start: string, end: string, recurrence?: string) {
+  async createEvent(summary: string, start: string, end: string, recurrence?: string, location?: string) {
     const event = await this.client.createCalendarObject({
       calendar: this.calendar,
       filename: `${summary}-${Date.now()}.ics`,
@@ -91,7 +91,7 @@ PRODID:-//tsdav//tsdav 1.0.0//EN
 BEGIN:VEVENT
 SUMMARY:${summary}
 DTSTART:${new Date(start).toISOString().replace(/[-:]/g, '').split('.')[0]}Z
-DTEND:${new Date(end).toISOString().replace(/[-:]/g, '').split('.')[0]}Z${recurrence ? `\nRRULE:${recurrence}` : ''}
+DTEND:${new Date(end).toISOString().replace(/[-:]/g, '').split('.')[0]}Z${recurrence ? `\nRRULE:${recurrence}` : ''}${location ? `\nLOCATION:${location}` : ''}
 END:VEVENT
 END:VCALENDAR`
     });
@@ -273,10 +273,18 @@ async function main() {
           "- FREQ=MONTHLY;BYDAY=1MO (first Monday of each month)\n" +
           "- FREQ=YEARLY;COUNT=5 (yearly for 5 occurrences)\n" +
           "- FREQ=WEEKLY;UNTIL=20241231T235959Z (weekly until end of 2024)"
+        ),
+        location: z.string().optional().describe(
+          "Optional location for the event.\n" +
+          "Examples:\n" +
+          "- Conference Room A\n" +
+          "- 123 Main St, City, State\n" +
+          "- Virtual Meeting (Zoom)\n" +
+          "- Building 4, Floor 2"
         )
       },
-      async ({summary, start, end, recurrence}) => {
-        const eventUrl = await calendarService.createEvent(summary, start, end, recurrence);
+      async ({summary, start, end, recurrence, location}) => {
+        const eventUrl = await calendarService.createEvent(summary, start, end, recurrence, location);
         return {
           content: [{type: "text", text: eventUrl}]
         };

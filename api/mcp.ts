@@ -78,10 +78,18 @@ export default async function handler(req: any, res: any) {
           "- FREQ=MONTHLY;BYDAY=1MO (first Monday of each month)\n" +
           "- FREQ=YEARLY;COUNT=5 (yearly for 5 occurrences)\n" +
           "- FREQ=WEEKLY;UNTIL=20241231T235959Z (weekly until end of 2024)"
+        ),
+        location: z.string().optional().describe(
+          "Optional location for the event.\n" +
+          "Examples:\n" +
+          "- Conference Room A\n" +
+          "- 123 Main St, City, State\n" +
+          "- Virtual Meeting (Zoom)\n" +
+          "- Building 4, Floor 2"
         )
       },
-      async ({summary, start, end, recurrence}) => {
-        const eventUrl = await calendarService.createEvent(summary, start, end, recurrence);
+      async ({summary, start, end, recurrence, location}) => {
+        const eventUrl = await calendarService.createEvent(summary, start, end, recurrence, location);
         return {
           content: [{type: "text", text: eventUrl}]
         };
