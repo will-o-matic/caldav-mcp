@@ -10,42 +10,48 @@ import debug from 'debug';
 const log = debug('caldav-mcp:main');
 const calendarLog = debug('caldav-mcp:calendar');
 
-const server = new McpServer({
-  name: "caldav-mcp",
-  version: "0.1.0"
-});
+// Core calendar functionality that can be used by both CLI and HTTP interfaces
+export class CalendarService {
+  private client: any;
+  private calendar: any;
 
-async function main() {
-  // Log environment variables (without sensitive data)
-  console.error('Environment check:');
-  console.error('CALDAV_BASE_URL:', process.env.CALDAV_BASE_URL ? 'Set' : 'Not set');
-  console.error('CALDAV_USERNAME:', process.env.CALDAV_USERNAME ? 'Set' : 'Not set');
-  console.error('CALDAV_PASSWORD:', process.env.CALDAV_PASSWORD ? 'Set' : 'Not set');
-
-  if (!process.env.CALDAV_BASE_URL) {
-    throw new Error('CALDAV_BASE_URL environment variable is required');
+  constructor() {
+    if (!process.env.CALDAV_BASE_URL) {
+      throw new Error('CALDAV_BASE_URL environment variable is required');
+    }
   }
 
-  // Create a proxy for fetch that intercepts the well-known lookup
-  const originalFetch = global.fetch;
-  global.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-    console.error('Intercepted fetch request:', input);
-    if (typeof input === 'string' && input.includes('/.well-known/caldav')) {
-      console.error('Intercepted well-known lookup, redirecting to:', process.env.CALDAV_BASE_URL);
-      // Return a mock response that redirects to our base URL
-      return new Response(null, {
-        status: 302,
-        headers: {
-          'Location': process.env.CALDAV_BASE_URL || ''
+  async initialize() {
+    // Create a proxy for fetch that intercepts the well-known lookup
+    const originalFetch = global.fetch;
+    global.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      console.error('Intercepted fetch request:', input);
+      if (typeof input === 'string' && input.includes('/.well-known/caldav')) {
+        const baseUrl = process.env.CALDAV_BASE_URL;
+        if (!baseUrl) {
+          throw new Error('CALDAV_BASE_URL environment variable is required');
         }
-      });
-    }
-    return originalFetch(input, init);
-  };
+        console.error('Intercepted well-known lookup, redirecting to:', baseUrl);
+        return new Response(null, {
+          status: 302,
+          headers: {
+            'Location': baseUrl
+          }
+        });
+      }
+      return originalFetch(input, init);
+    };
 
-  try {
-    const client = await createDAVClient({
-      serverUrl: process.env.CALDAV_BASE_URL,
+    // Restore original fetch
+    global.fetch = originalFetch;
+
+    const baseUrl = process.env.CALDAV_BASE_URL;
+    if (!baseUrl) {
+      throw new Error('CALDAV_BASE_URL environment variable is required');
+    }
+
+    this.client = await createDAVClient({
+      serverUrl: baseUrl,
       credentials: {
         username: process.env.CALDAV_USERNAME || "",
         password: process.env.CALDAV_PASSWORD || "",
@@ -54,43 +60,32 @@ async function main() {
       defaultAccountType: 'caldav',
     });
 
-    // Restore original fetch
-    global.fetch = originalFetch;
-
-    const calendars = await client.fetchCalendars();
+    const calendars = await this.client.fetchCalendars();
     if (!calendars || calendars.length === 0) {
       throw new Error('No calendars found');
     }
-    const calendar = calendars[0];
-    log('Using calendar:', calendar.displayName);
+    this.calendar = calendars[0];
+    log('Using calendar:', this.calendar.displayName);
+  }
 
-    server.tool(
-      "list-calendars",
-      {},
-      async () => {
-        const calendars = await client.fetchCalendars();
-        return {
-          content: [{type: "text", text: calendars.map(cal => 
-            `Calendar: ${cal.displayName}\n` +
-            `URL: ${cal.url}\n` +
-            `Description: ${cal.description || 'No description'}\n` +
-            `Components: ${cal.components?.join(', ') || 'Not specified'}\n` +
-            `Timezone: ${cal.timezone || 'Not specified'}\n` +
-            `Color: ${cal.calendarColor || 'Not specified'}\n` +
-            '---'
-          ).join('\n')}]
-        };
-      }
-    );
+  async listCalendars() {
+    const calendars = await this.client.fetchCalendars();
+    return calendars.map((cal: { displayName: string; url: string; description?: string; components?: string[]; timezone?: string; calendarColor?: string }) => 
+      `Calendar: ${cal.displayName}\n` +
+      `URL: ${cal.url}\n` +
+      `Description: ${cal.description || 'No description'}\n` +
+      `Components: ${cal.components?.join(', ') || 'Not specified'}\n` +
+      `Timezone: ${cal.timezone || 'Not specified'}\n` +
+      `Color: ${cal.calendarColor || 'Not specified'}\n` +
+      '---'
+    ).join('\n');
+  }
 
-    server.tool(
-      "create-event",
-      {summary: z.string(), start: z.string().datetime(), end: z.string().datetime()},
-      async ({summary, start, end}) => {
-        const event = await client.createCalendarObject({
-          calendar: calendar,
-          filename: `${summary}-${Date.now()}.ics`,
-          iCalString: `BEGIN:VCALENDAR
+  async createEvent(summary: string, start: string, end: string) {
+    const event = await this.client.createCalendarObject({
+      calendar: this.calendar,
+      filename: `${summary}-${Date.now()}.ics`,
+      iCalString: `BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//tsdav//tsdav 1.0.0//EN
 BEGIN:VEVENT
@@ -99,9 +94,166 @@ DTSTART:${new Date(start).toISOString().replace(/[-:]/g, '').split('.')[0]}Z
 DTEND:${new Date(end).toISOString().replace(/[-:]/g, '').split('.')[0]}Z
 END:VEVENT
 END:VCALENDAR`
-        });
+    });
+    return event.url;
+  }
+
+  async listEvents(start: string, end: string) {
+    calendarLog('Fetching events between %s and %s', start, end);
+    
+    const calendarObjects = await this.client.fetchCalendarObjects({
+      calendar: this.calendar,
+    });
+    
+    calendarLog('Retrieved %d calendar objects', calendarObjects.length);
+    
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    calendarLog('Filtering events between %s and %s', startDate.toISOString(), endDate.toISOString());
+
+    const filteredEvents = calendarObjects.filter((event: DAVCalendarObject) => {
+      try {
+        calendarLog('Processing event data: %s', event.data);
+        
+        if (!event.data) {
+          calendarLog('Event data is undefined or null');
+          return false;
+        }
+
+        // Handle both timezone-aware and all-day events
+        const startMatch = event.data.match(/DTSTART(?:;TZID=([^:]+))?(?:;VALUE=DATE)?:([^\n]+)/);
+        const endMatch = event.data.match(/DTEND(?:;TZID=([^:]+))?(?:;VALUE=DATE)?:([^\n]+)/);
+        const summaryMatch = event.data.match(/SUMMARY:([^\n]+)/);
+
+        if (!startMatch || !endMatch || !summaryMatch) {
+          calendarLog('Could not parse event data');
+          return false;
+        }
+
+        const startTz = startMatch[1];
+        const endTz = endMatch[1];
+        const startDateStr = startMatch[2];
+        const endDateStr = endMatch[2];
+        const isAllDay = event.data.includes('VALUE=DATE');
+
+        let startUTC: Date;
+        let endUTC: Date;
+
+        if (isAllDay) {
+          startUTC = new Date(startDateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'));
+          endUTC = new Date(endDateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'));
+          endUTC.setDate(endUTC.getDate() - 1);
+        } else {
+          // For timezone-aware dates, we need to parse the date string and timezone separately
+          const dateStr = startDateStr.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/, '$1-$2-$3T$4:$5:$6');
+          startUTC = new Date(dateStr);
+          if (startTz) {
+            // Adjust for timezone offset
+            const tzOffset = new Date().getTimezoneOffset();
+            startUTC.setMinutes(startUTC.getMinutes() + tzOffset);
+          }
+
+          const endDateStr = endMatch[2];
+          const endDateStrFormatted = endDateStr.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/, '$1-$2-$3T$4:$5:$6');
+          endUTC = new Date(endDateStrFormatted);
+          if (endTz) {
+            // Adjust for timezone offset
+            const tzOffset = new Date().getTimezoneOffset();
+            endUTC.setMinutes(endUTC.getMinutes() + tzOffset);
+          }
+        }
+        
+        return startUTC <= endDate && endUTC >= startDate;
+      } catch (error) {
+        calendarLog('Error processing event: %s', error);
+        return false;
+      }
+    });
+
+    calendarLog('Found %d events in date range', filteredEvents.length);
+
+    return filteredEvents.map((e: DAVCalendarObject) => {
+      try {
+        if (!e.data) {
+          calendarLog('Event data is undefined or null');
+          return 'Error: Event data is missing';
+        }
+        const startMatch = e.data.match(/DTSTART(?:;TZID=([^:]+))?(?:;VALUE=DATE)?:([^\n]+)/);
+        const endMatch = e.data.match(/DTEND(?:;TZID=([^:]+))?(?:;VALUE=DATE)?:([^\n]+)/);
+        const summaryMatch = e.data.match(/SUMMARY:([^\n]+)/);
+
+        if (!startMatch || !endMatch || !summaryMatch) {
+          return 'Error: Could not parse event data';
+        }
+
+        const startTz = startMatch[1];
+        const endTz = endMatch[1];
+        const startDateStr = startMatch[2];
+        const endDateStr = endMatch[2];
+        const summary = summaryMatch[1];
+        const isAllDay = e.data.includes('VALUE=DATE');
+
+        const formatDate = (dateStr: string, tz?: string, isAllDay: boolean = false) => {
+          if (isAllDay) {
+            // For all-day events, format as YYYY-MM-DD
+            return dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
+          } else {
+            // For regular events, format as YYYY-MM-DDTHH:mm:ss
+            const formatted = dateStr.replace(
+              /(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/,
+              '$1-$2-$3T$4:$5:$6'
+            );
+            return tz ? `${formatted} (${tz})` : formatted;
+          }
+        };
+
+        const start = formatDate(startDateStr, startTz, isAllDay);
+        const end = formatDate(endDateStr, endTz, isAllDay);
+        
+        return `${summary}${isAllDay ? ' (All Day)' : ''}\nStart: ${start}\nEnd: ${end}`;
+      } catch (error) {
+        calendarLog('Error formatting event: %s', error);
+        return 'Error processing event data';
+      }
+    }).join("\n");
+  }
+}
+
+// CLI-specific code
+async function main() {
+  // Log environment variables (without sensitive data)
+  console.error('Environment check:');
+  console.error('CALDAV_BASE_URL:', process.env.CALDAV_BASE_URL ? 'Set' : 'Not set');
+  console.error('CALDAV_USERNAME:', process.env.CALDAV_USERNAME ? 'Set' : 'Not set');
+  console.error('CALDAV_PASSWORD:', process.env.CALDAV_PASSWORD ? 'Set' : 'Not set');
+
+  try {
+    const calendarService = new CalendarService();
+    await calendarService.initialize();
+
+    const server = new McpServer({
+      name: "caldav-mcp",
+      version: "0.1.0"
+    });
+
+    server.tool(
+      "list-calendars",
+      {},
+      async () => {
+        const calendars = await calendarService.listCalendars();
         return {
-          content: [{type: "text", text: event.url}]
+          content: [{type: "text", text: calendars}]
+        };
+      }
+    );
+
+    server.tool(
+      "create-event",
+      {summary: z.string(), start: z.string().datetime(), end: z.string().datetime()},
+      async ({summary, start, end}) => {
+        const eventUrl = await calendarService.createEvent(summary, start, end);
+        return {
+          content: [{type: "text", text: eventUrl}]
         };
       }
     );
@@ -110,113 +262,9 @@ END:VCALENDAR`
       "list-events",
       {start: z.string().datetime(), end: z.string().datetime()},
       async ({start, end}) => {
-        calendarLog('Fetching events between %s and %s', start, end);
-        
-        const calendarObjects = await client.fetchCalendarObjects({
-          calendar: calendar,
-        });
-        
-        calendarLog('Retrieved %d calendar objects', calendarObjects.length);
-        
-        const startDate = new Date(start);
-        const endDate = new Date(end);
-        calendarLog('Filtering events between %s and %s', startDate.toISOString(), endDate.toISOString());
-
-        const filteredEvents = calendarObjects.filter((event: DAVCalendarObject) => {
-          try {
-            calendarLog('Processing event data: %s', event.data);
-            
-            if (!event.data) {
-              calendarLog('Event data is undefined or null');
-              return false;
-            }
-
-            // Extract the date strings with their timezone information
-            const startMatch = event.data.match(/DTSTART(?:;TZID=([^:]+))?:([^\n]+)/);
-            const endMatch = event.data.match(/DTEND(?:;TZID=([^:]+))?:([^\n]+)/);
-            const summaryMatch = event.data.match(/SUMMARY:([^\n]+)/);
-
-            if (!startMatch || !endMatch || !summaryMatch) {
-              calendarLog('Could not parse event data');
-              return false;
-            }
-
-            // Parse the dates, handling timezone information
-            const startTz = startMatch[1];
-            const endTz = endMatch[1];
-            const startDateStr = startMatch[2];
-            const endDateStr = endMatch[2];
-            const summary = summaryMatch[1];
-
-            // Format the date string to be ISO-compatible
-            const formatDate = (dateStr: string, tz?: string) => {
-              // Convert YYYYMMDDTHHMMSS to YYYY-MM-DDTHH:MM:SS
-              const formatted = dateStr.replace(
-                /(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/,
-                '$1-$2-$3T$4:$5:$6'
-              );
-              return tz ? `${formatted} (${tz})` : formatted;
-            };
-
-            const eventStart = formatDate(startDateStr, startTz);
-            const eventEnd = formatDate(endDateStr, endTz);
-            
-            calendarLog('Event details - Summary: %s, Start: %s, End: %s', 
-              summary, eventStart, eventEnd);
-
-            // For comparison, convert to UTC
-            const startUTC = new Date(startDateStr + (startTz ? 'Z' : ''));
-            const endUTC = new Date(endDateStr + (endTz ? 'Z' : ''));
-            
-            return startUTC <= endDate && endUTC >= startDate;
-          } catch (error) {
-            calendarLog('Error processing event: %s', error);
-            return false;
-          }
-        });
-
-        calendarLog('Found %d events in date range', filteredEvents.length);
-
+        const events = await calendarService.listEvents(start, end);
         return {
-          content: [{type: "text", text: filteredEvents.map((e: DAVCalendarObject) => {
-            try {
-              if (!e.data) {
-                calendarLog('Event data is undefined or null');
-                return 'Error: Event data is missing';
-              }
-              const startMatch = e.data.match(/DTSTART(?:;TZID=([^:]+))?:([^\n]+)/);
-              const endMatch = e.data.match(/DTEND(?:;TZID=([^:]+))?:([^\n]+)/);
-              const summaryMatch = e.data.match(/SUMMARY:([^\n]+)/);
-
-              if (!startMatch || !endMatch || !summaryMatch) {
-                return 'Error: Could not parse event data';
-              }
-
-              const startTz = startMatch[1];
-              const endTz = endMatch[1];
-              const startDateStr = startMatch[2];
-              const endDateStr = endMatch[2];
-              const summary = summaryMatch[1];
-
-              // Format the date string to be ISO-compatible
-              const formatDate = (dateStr: string, tz?: string) => {
-                // Convert YYYYMMDDTHHMMSS to YYYY-MM-DDTHH:MM:SS
-                const formatted = dateStr.replace(
-                  /(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/,
-                  '$1-$2-$3T$4:$5:$6'
-                );
-                return tz ? `${formatted} (${tz})` : formatted;
-              };
-
-              const start = formatDate(startDateStr, startTz);
-              const end = formatDate(endDateStr, endTz);
-              
-              return `${summary}\nStart: ${start}\nEnd: ${end}`;
-            } catch (error) {
-              calendarLog('Error formatting event: %s', error);
-              return 'Error processing event data';
-            }
-          }).join("\n")}]
+          content: [{type: "text", text: events}]
         };
       }
     );
