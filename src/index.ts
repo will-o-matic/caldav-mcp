@@ -92,7 +92,7 @@ export class CalendarService {
     ).join('\n');
   }
 
-  async createEvent(summary: string, start: string, end: string, timezone: string, recurrence?: string, location?: string, calendarName?: string) {
+  async createEvent(summary: string, start: string, end: string, timezone: string, recurrence?: string, location?: string, calendarName?: string, reminders?: { action: 'DISPLAY' | 'AUDIO' | 'EMAIL', trigger: string, description?: string }[]) {
     const calendar = this.getCalendar(calendarName);
     const formatDate = (date: string) => {
       const d = new Date(date);
@@ -106,6 +106,16 @@ export class CalendarService {
       return `TZID=${timezone}:${year}${month}${day}T${hours}${minutes}${seconds}`;
     };
 
+    // Generate VALARM components for reminders
+    const alarmComponents = reminders?.map(reminder => {
+      const action = reminder.action === 'DISPLAY' ? 'DISPLAY' : reminder.action === 'AUDIO' ? 'AUDIO' : 'EMAIL';
+      const description = reminder.description ? `\nDESCRIPTION:${reminder.description}` : '';
+      return `BEGIN:VALARM
+ACTION:${action}
+TRIGGER:${reminder.trigger}${description}
+END:VALARM`;
+    }).join('\n') || '';
+
     const event = await this.client.createCalendarObject({
       calendar,
       filename: `${summary}-${Date.now()}.ics`,
@@ -115,7 +125,7 @@ PRODID:-//tsdav//tsdav 1.0.0//EN
 BEGIN:VEVENT
 SUMMARY:${summary}
 DTSTART;${formatDate(start)}
-DTEND;${formatDate(end)}${recurrence ? `\nRRULE:${recurrence}` : ''}${location ? `\nLOCATION:${location}` : ''}
+DTEND;${formatDate(end)}${recurrence ? `\nRRULE:${recurrence}` : ''}${location ? `\nLOCATION:${location}` : ''}${alarmComponents ? `\n${alarmComponents}` : ''}
 END:VEVENT
 END:VCALENDAR`
     });
@@ -317,10 +327,33 @@ async function main() {
           "Optional name of the calendar to create the event in.\n" +
           "If not specified, uses the first available calendar.\n" +
           "Use list-calendars to see available calendar names."
+        ),
+        reminders: z.array(z.object({
+          action: z.enum(['DISPLAY', 'AUDIO', 'EMAIL']).describe(
+            "The type of reminder action.\n" +
+            "- DISPLAY: Shows a notification\n" +
+            "- AUDIO: Plays a sound\n" +
+            "- EMAIL: Sends an email"
+          ),
+          trigger: z.string().describe(
+            "When the reminder should trigger.\n" +
+            "Examples:\n" +
+            "- -PT15M (15 minutes before)\n" +
+            "- -PT1H (1 hour before)\n" +
+            "- -P1D (1 day before)\n" +
+            "- 20240320T100000Z (specific date/time)"
+          ),
+          description: z.string().optional().describe(
+            "Optional description for the reminder.\n" +
+            "For DISPLAY and EMAIL actions, this will be shown in the notification/email."
+          )
+        })).optional().describe(
+          "Optional array of reminders for the event.\n" +
+          "Each reminder can have a different action and trigger time."
         )
       },
-      async ({summary, start, end, timezone, recurrence, location, calendarName}) => {
-        const eventUrl = await calendarService.createEvent(summary, start, end, timezone, recurrence, location, calendarName);
+      async ({summary, start, end, timezone, recurrence, location, calendarName, reminders}) => {
+        const eventUrl = await calendarService.createEvent(summary, start, end, timezone, recurrence, location, calendarName, reminders);
         return {
           content: [{type: "text", text: eventUrl}]
         };
