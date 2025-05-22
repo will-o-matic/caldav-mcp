@@ -7,13 +7,13 @@
     "strict": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "outDir": "dist",
+    "outDir": ".vercel/output/functions/api",
     "rootDir": ".",
     "baseUrl": ".",
     "paths": {
       "*": ["node_modules/*"]
     }
   },
-  "include": ["api/**/*", "src/**/*"],
-  "exclude": ["node_modules"]
+  "include": ["api/**/*"],
+  "exclude": ["node_modules", "src"]
 }
