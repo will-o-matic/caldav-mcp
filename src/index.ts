@@ -168,6 +168,88 @@ END:VCALENDAR`;
     }
   }
 
+  private extractEventId(url: string): string {
+    // Extract the filename without .ics extension
+    const match = url.match(/([^/]+)\.ics$/);
+    return match ? match[1] : url;
+  }
+
+  async getMasterEvent(eventId: string, calendarName?: string) {
+    const calendar = this.getCalendar(calendarName);
+    calendarLog('Fetching master event %s from calendar %s', eventId, calendar.displayName);
+    
+    const calendarObjects = await this.client.fetchCalendarObjects({
+      calendar,
+      objectUrls: [`${eventId}.ics`]
+    });
+    
+    if (calendarObjects.length === 0) {
+      throw new Error(`Master event ${eventId} not found`);
+    }
+    
+    return this.formatEventDetails(calendarObjects[0]);
+  }
+
+  private formatEventDetails(e: DAVCalendarObject): string {
+    try {
+      if (!e.data) {
+        calendarLog('Event data is undefined or null');
+        return 'Error: Event data is missing';
+      }
+
+      const startMatch = e.data.match(/DTSTART(?:;TZID=([^:]+))?(?:;VALUE=DATE)?:([^\n]+)/);
+      const endMatch = e.data.match(/DTEND(?:;TZID=([^:]+))?(?:;VALUE=DATE)?:([^\n]+)/);
+      const summaryMatch = e.data.match(/SUMMARY:([^\n]+)/);
+      const recurrenceMatch = e.data.match(/RRULE:([^\n]+)/);
+      const locationMatch = e.data.match(/LOCATION:([^\n]+)/);
+      const descriptionMatch = e.data.match(/DESCRIPTION:([^\n]+)/);
+
+      if (!startMatch || !endMatch || !summaryMatch) {
+        return 'Error: Could not parse event data';
+      }
+
+      const startTz = startMatch[1];
+      const endTz = endMatch[1];
+      const startDateStr = startMatch[2];
+      const endDateStr = endMatch[2];
+      const summary = summaryMatch[1];
+      const isAllDay = e.data.includes('VALUE=DATE');
+      const isRecurring = !!recurrenceMatch;
+      const location = locationMatch ? locationMatch[1] : undefined;
+      const description = descriptionMatch ? descriptionMatch[1] : undefined;
+
+      const formatDate = (dateStr: string, tz?: string, isAllDay: boolean = false) => {
+        if (isAllDay) {
+          return dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
+        } else {
+          const formatted = dateStr.replace(
+            /(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/,
+            '$1-$2-$3T$4:$5:$6'
+          );
+          return tz ? `${formatted} (${tz})` : formatted;
+        }
+      };
+
+      const start = formatDate(startDateStr, startTz, isAllDay);
+      const end = formatDate(endDateStr, endTz, isAllDay);
+      
+      const indicators = [];
+      if (isAllDay) indicators.push('All Day');
+      if (isRecurring) indicators.push('Recurring');
+      const indicatorStr = indicators.length > 0 ? ` (${indicators.join(', ')})` : '';
+      
+      let details = `${summary}${indicatorStr}\nStart: ${start}\nEnd: ${end}`;
+      if (location) details += `\nLocation: ${location}`;
+      if (description) details += `\nDescription: ${description}`;
+      if (isRecurring && recurrenceMatch) details += `\nRecurrence Rule: ${recurrenceMatch[1]}`;
+      
+      return details;
+    } catch (error) {
+      calendarLog('Error formatting event: %s', error);
+      return 'Error processing event data';
+    }
+  }
+
   async listEvents(start: string, end: string, timezone: string, calendarName?: string) {
     const calendar = this.getCalendar(calendarName);
     calendarLog('Fetching events between %s and %s from calendar %s', start, end, calendar.displayName);
@@ -190,23 +272,11 @@ END:VCALENDAR`;
           return 'Error: Event data is missing';
         }
 
-        // Debug log the raw event data
-        calendarLog('Raw event data: %s', e.data);
-
         const startMatch = e.data.match(/DTSTART(?:;TZID=([^:]+))?(?:;VALUE=DATE)?:([^\n]+)/);
         const endMatch = e.data.match(/DTEND(?:;TZID=([^:]+))?(?:;VALUE=DATE)?:([^\n]+)/);
         const summaryMatch = e.data.match(/SUMMARY:([^\n]+)/);
         const recurrenceMatch = e.data.match(/RRULE:([^\n]+)/);
         const recurrenceIdMatch = e.data.match(/RECURRENCE-ID(?:;TZID=([^:]+))?(?:;VALUE=DATE)?:([^\n]+)/);
-
-        // Debug log the matches
-        calendarLog('Event matches:', {
-          start: startMatch,
-          end: endMatch,
-          summary: summaryMatch,
-          recurrence: recurrenceMatch,
-          recurrenceId: recurrenceIdMatch
-        });
 
         if (!startMatch || !endMatch || !summaryMatch) {
           return 'Error: Could not parse event data';
@@ -221,24 +291,10 @@ END:VCALENDAR`;
         const isRecurring = !!recurrenceMatch;
         const isRecurrenceInstance = !!recurrenceIdMatch;
 
-        // Debug log the parsed values
-        calendarLog('Parsed event values:', {
-          summary,
-          startTz,
-          endTz,
-          startDateStr,
-          endDateStr,
-          isAllDay,
-          isRecurring,
-          isRecurrenceInstance
-        });
-
         const formatDate = (dateStr: string, tz?: string, isAllDay: boolean = false) => {
           if (isAllDay) {
-            // For all-day events, format as YYYY-MM-DD
             return dateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
           } else {
-            // For regular events, format as YYYY-MM-DDTHH:mm:ss
             const formatted = dateStr.replace(
               /(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/,
               '$1-$2-$3T$4:$5:$6'
@@ -250,14 +306,17 @@ END:VCALENDAR`;
         const start = formatDate(startDateStr, startTz, isAllDay);
         const end = formatDate(endDateStr, endTz, isAllDay);
         
-        // Add indicators for recurring and all-day events
         const indicators = [];
         if (isAllDay) indicators.push('All Day');
         if (isRecurring) indicators.push('Recurring');
         if (isRecurrenceInstance) indicators.push('Recurrence Instance');
         const indicatorStr = indicators.length > 0 ? ` (${indicators.join(', ')})` : '';
         
-        return `${summary}${indicatorStr}\nStart: ${start}\nEnd: ${end}`;
+        // For recurrence instances, show the event ID instead of the full URL
+        const masterEventInfo = isRecurrenceInstance ? 
+          `\nMaster Event ID: ${this.extractEventId(e.url)}` : '';
+        
+        return `${summary}${indicatorStr}\nStart: ${start}\nEnd: ${end}${masterEventInfo}`;
       } catch (error) {
         calendarLog('Error formatting event: %s', error);
         return 'Error processing event data';
@@ -405,6 +464,28 @@ async function main() {
         const events = await calendarService.listEvents(start, end, timezone, calendarName);
         return {
           content: [{type: "text", text: events}]
+        };
+      }
+    );
+
+    server.tool(
+      "get-master-event",
+      {
+        eventId: z.string().describe(
+          "The ID of the master event to fetch.\n" +
+          "This ID can be found in the Master Event ID field when listing events.\n" +
+          "Example: wolverine-training"
+        ),
+        calendarName: z.string().optional().describe(
+          "Optional name of the calendar containing the event.\n" +
+          "If not specified, uses the first available calendar.\n" +
+          "Use list-calendars to see available calendar names."
+        )
+      },
+      async ({eventId, calendarName}) => {
+        const eventDetails = await calendarService.getMasterEvent(eventId, calendarName);
+        return {
+          content: [{type: "text", text: eventDetails}]
         };
       }
     );
