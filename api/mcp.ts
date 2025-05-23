@@ -89,7 +89,14 @@ export default async function handler(req: any, res: any) {
         )
       },
       async ({summary, start, end, recurrence, location}) => {
-        const eventUrl = await calendarService.createEvent(summary, start, end, recurrence, location);
+        const eventUrl = await calendarService.createEvent(
+          summary,
+          start,
+          end,
+          'UTC', // Default timezone
+          recurrence,
+          location
+        );
         return {
           content: [{type: "text", text: eventUrl}]
         };
@@ -98,9 +105,20 @@ export default async function handler(req: any, res: any) {
 
     server.tool(
       "list-events",
-      {start: z.string().datetime(), end: z.string().datetime()},
-      async ({start, end}) => {
-        const events = await calendarService.listEvents(start, end);
+      {
+        start: z.string().datetime(),
+        end: z.string().datetime(),
+        timezone: z.string().default('UTC').describe(
+          "The timezone for the event.\n" +
+          "Examples:\n" +
+          "- America/New_York\n" +
+          "- Europe/London\n" +
+          "- Asia/Tokyo\n" +
+          "Must be a valid IANA timezone name."
+        )
+      },
+      async ({start, end, timezone}) => {
+        const events = await calendarService.listEvents(start, end, timezone);
         return {
           content: [{type: "text", text: events}]
         };
