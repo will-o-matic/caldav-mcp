@@ -177,7 +177,8 @@ END:VCALENDAR`;
       timeRange: {
         start,
         end
-      }
+      },
+      expand: true // Enable expansion of recurring events
     });
     
     calendarLog('Retrieved %d calendar objects', calendarObjects.length);
@@ -188,9 +189,24 @@ END:VCALENDAR`;
           calendarLog('Event data is undefined or null');
           return 'Error: Event data is missing';
         }
+
+        // Debug log the raw event data
+        calendarLog('Raw event data: %s', e.data);
+
         const startMatch = e.data.match(/DTSTART(?:;TZID=([^:]+))?(?:;VALUE=DATE)?:([^\n]+)/);
         const endMatch = e.data.match(/DTEND(?:;TZID=([^:]+))?(?:;VALUE=DATE)?:([^\n]+)/);
         const summaryMatch = e.data.match(/SUMMARY:([^\n]+)/);
+        const recurrenceMatch = e.data.match(/RRULE:([^\n]+)/);
+        const recurrenceIdMatch = e.data.match(/RECURRENCE-ID(?:;TZID=([^:]+))?(?:;VALUE=DATE)?:([^\n]+)/);
+
+        // Debug log the matches
+        calendarLog('Event matches:', {
+          start: startMatch,
+          end: endMatch,
+          summary: summaryMatch,
+          recurrence: recurrenceMatch,
+          recurrenceId: recurrenceIdMatch
+        });
 
         if (!startMatch || !endMatch || !summaryMatch) {
           return 'Error: Could not parse event data';
@@ -202,6 +218,20 @@ END:VCALENDAR`;
         const endDateStr = endMatch[2];
         const summary = summaryMatch[1];
         const isAllDay = e.data.includes('VALUE=DATE');
+        const isRecurring = !!recurrenceMatch;
+        const isRecurrenceInstance = !!recurrenceIdMatch;
+
+        // Debug log the parsed values
+        calendarLog('Parsed event values:', {
+          summary,
+          startTz,
+          endTz,
+          startDateStr,
+          endDateStr,
+          isAllDay,
+          isRecurring,
+          isRecurrenceInstance
+        });
 
         const formatDate = (dateStr: string, tz?: string, isAllDay: boolean = false) => {
           if (isAllDay) {
@@ -220,7 +250,14 @@ END:VCALENDAR`;
         const start = formatDate(startDateStr, startTz, isAllDay);
         const end = formatDate(endDateStr, endTz, isAllDay);
         
-        return `${summary}${isAllDay ? ' (All Day)' : ''}\nStart: ${start}\nEnd: ${end}`;
+        // Add indicators for recurring and all-day events
+        const indicators = [];
+        if (isAllDay) indicators.push('All Day');
+        if (isRecurring) indicators.push('Recurring');
+        if (isRecurrenceInstance) indicators.push('Recurrence Instance');
+        const indicatorStr = indicators.length > 0 ? ` (${indicators.join(', ')})` : '';
+        
+        return `${summary}${indicatorStr}\nStart: ${start}\nEnd: ${end}`;
       } catch (error) {
         calendarLog('Error formatting event: %s', error);
         return 'Error processing event data';
