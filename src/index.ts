@@ -168,7 +168,7 @@ END:VCALENDAR`;
     }
   }
 
-  async listEvents(start: string, end: string, calendarName?: string) {
+  async listEvents(start: string, end: string, timezone: string, calendarName?: string) {
     const calendar = this.getCalendar(calendarName);
     calendarLog('Fetching events between %s and %s from calendar %s', start, end, calendar.displayName);
     
@@ -211,9 +211,49 @@ END:VCALENDAR`;
         let endUTC: Date;
 
         if (isAllDay) {
-          startUTC = new Date(startDateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'));
-          endUTC = new Date(endDateStr.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3'));
-          endUTC.setDate(endUTC.getDate() - 1);
+          // For all-day events, we need to compare the dates in UTC
+          // Parse the dates directly as UTC dates
+          const eventStartDate = new Date(Date.UTC(
+            parseInt(startDateStr.substring(0, 4)),
+            parseInt(startDateStr.substring(4, 6)) - 1, // Month is 0-based
+            parseInt(startDateStr.substring(6, 8))
+          ));
+          
+          const eventEndDate = new Date(Date.UTC(
+            parseInt(endDateStr.substring(0, 4)),
+            parseInt(endDateStr.substring(4, 6)) - 1, // Month is 0-based
+            parseInt(endDateStr.substring(6, 8))
+          ));
+          eventEndDate.setUTCDate(eventEndDate.getUTCDate() - 1); // All-day events end at the start of the next day
+          
+          // Convert query times to UTC for comparison
+          const queryStartUTC = new Date(start);
+          const queryEndUTC = new Date(end);
+          
+          // Create UTC date-only objects for comparison
+          const queryStartDate = new Date(Date.UTC(
+            queryStartUTC.getUTCFullYear(),
+            queryStartUTC.getUTCMonth(),
+            queryStartUTC.getUTCDate()
+          ));
+          
+          const queryEndDate = new Date(Date.UTC(
+            queryEndUTC.getUTCFullYear(),
+            queryEndUTC.getUTCMonth(),
+            queryEndUTC.getUTCDate()
+          ));
+          
+          calendarLog('All-day event comparison:');
+          calendarLog('Event start date:', eventStartDate.toISOString());
+          calendarLog('Event end date:', eventEndDate.toISOString());
+          calendarLog('Query start date:', queryStartDate.toISOString());
+          calendarLog('Query end date:', queryEndDate.toISOString());
+          calendarLog('Comparison result:', eventStartDate <= queryEndDate && eventEndDate >= queryStartDate);
+          
+          // An all-day event is in range if:
+          // 1. The event starts before or on the query end date AND
+          // 2. The event ends after or on the query start date
+          return eventStartDate <= queryEndDate && eventEndDate >= queryStartDate;
         } else {
           // For timezone-aware dates, we need to parse the date string and timezone separately
           const dateStr = startDateStr.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/, '$1-$2-$3T$4:$5:$6');
@@ -399,19 +439,25 @@ async function main() {
     server.tool(
       "list-events",
       {
-        start: z.string().datetime().describe(
-          "The start of the time range to search for events in ISO 8601 format.\n" +
+        start: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/).describe(
+          "The start of the time range in ISO 8601 format.\n" +
           "Examples:\n" +
-          "- 2024-03-20T00:00:00Z (UTC time)\n" +
-          "- 2024-03-20T00:00:00+00:00 (UTC time with offset)\n" +
-          "- 2024-03-20T00:00:00-05:00 (Eastern Time)"
+          "- 2024-03-20T15:30:00\n" +
+          "Note: The timezone will be applied from the timezone parameter."
         ),
-        end: z.string().datetime().describe(
-          "The end of the time range to search for events in ISO 8601 format.\n" +
+        end: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/).describe(
+          "The end of the time range in ISO 8601 format.\n" +
           "Examples:\n" +
-          "- 2024-03-21T00:00:00Z (UTC time)\n" +
-          "- 2024-03-21T00:00:00+00:00 (UTC time with offset)\n" +
-          "- 2024-03-21T00:00:00-05:00 (Eastern Time)"
+          "- 2024-03-20T16:30:00\n" +
+          "Note: The timezone will be applied from the timezone parameter."
+        ),
+        timezone: z.string().describe(
+          "The timezone for the event.\n" +
+          "Examples:\n" +
+          "- America/New_York\n" +
+          "- Europe/London\n" +
+          "- Asia/Tokyo\n" +
+          "Must be a valid IANA timezone name."
         ),
         calendarName: z.string().optional().describe(
           "Optional name of the calendar to list events from.\n" +
@@ -419,8 +465,8 @@ async function main() {
           "Use list-calendars to see available calendar names."
         )
       },
-      async ({start, end, calendarName}) => {
-        const events = await calendarService.listEvents(start, end, calendarName);
+      async ({start, end, timezone, calendarName}) => {
+        const events = await calendarService.listEvents(start, end, timezone, calendarName);
         return {
           content: [{type: "text", text: events}]
         };
