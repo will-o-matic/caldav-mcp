@@ -174,116 +174,15 @@ END:VCALENDAR`;
     
     const calendarObjects = await this.client.fetchCalendarObjects({
       calendar,
+      timeRange: {
+        start,
+        end
+      }
     });
     
     calendarLog('Retrieved %d calendar objects', calendarObjects.length);
     
-    const startDate = new Date(start);
-    const endDate = new Date(end);
-    calendarLog('Filtering events between %s and %s', startDate.toISOString(), endDate.toISOString());
-
-    const filteredEvents = calendarObjects.filter((event: DAVCalendarObject) => {
-      try {
-        calendarLog('Processing event data: %s', event.data);
-        
-        if (!event.data) {
-          calendarLog('Event data is undefined or null');
-          return false;
-        }
-
-        // Handle both timezone-aware and all-day events
-        const startMatch = event.data.match(/DTSTART(?:;TZID=([^:]+))?(?:;VALUE=DATE)?:([^\n]+)/);
-        const endMatch = event.data.match(/DTEND(?:;TZID=([^:]+))?(?:;VALUE=DATE)?:([^\n]+)/);
-        const summaryMatch = event.data.match(/SUMMARY:([^\n]+)/);
-
-        if (!startMatch || !endMatch || !summaryMatch) {
-          calendarLog('Could not parse event data');
-          return false;
-        }
-
-        const startTz = startMatch[1];
-        const endTz = endMatch[1];
-        const startDateStr = startMatch[2];
-        const endDateStr = endMatch[2];
-        const isAllDay = event.data.includes('VALUE=DATE');
-
-        let startUTC: Date;
-        let endUTC: Date;
-
-        if (isAllDay) {
-          // For all-day events, we need to compare the dates in UTC
-          // Parse the dates directly as UTC dates
-          const eventStartDate = new Date(Date.UTC(
-            parseInt(startDateStr.substring(0, 4)),
-            parseInt(startDateStr.substring(4, 6)) - 1, // Month is 0-based
-            parseInt(startDateStr.substring(6, 8))
-          ));
-          
-          const eventEndDate = new Date(Date.UTC(
-            parseInt(endDateStr.substring(0, 4)),
-            parseInt(endDateStr.substring(4, 6)) - 1, // Month is 0-based
-            parseInt(endDateStr.substring(6, 8))
-          ));
-          eventEndDate.setUTCDate(eventEndDate.getUTCDate() - 1); // All-day events end at the start of the next day
-          
-          // Convert query times to UTC for comparison
-          const queryStartUTC = new Date(start);
-          const queryEndUTC = new Date(end);
-          
-          // Create UTC date-only objects for comparison
-          const queryStartDate = new Date(Date.UTC(
-            queryStartUTC.getUTCFullYear(),
-            queryStartUTC.getUTCMonth(),
-            queryStartUTC.getUTCDate()
-          ));
-          
-          const queryEndDate = new Date(Date.UTC(
-            queryEndUTC.getUTCFullYear(),
-            queryEndUTC.getUTCMonth(),
-            queryEndUTC.getUTCDate()
-          ));
-          
-          calendarLog('All-day event comparison:');
-          calendarLog('Event start date:', eventStartDate.toISOString());
-          calendarLog('Event end date:', eventEndDate.toISOString());
-          calendarLog('Query start date:', queryStartDate.toISOString());
-          calendarLog('Query end date:', queryEndDate.toISOString());
-          calendarLog('Comparison result:', eventStartDate <= queryEndDate && eventEndDate >= queryStartDate);
-          
-          // An all-day event is in range if:
-          // 1. The event starts before or on the query end date AND
-          // 2. The event ends after or on the query start date
-          return eventStartDate <= queryEndDate && eventEndDate >= queryStartDate;
-        } else {
-          // For timezone-aware dates, we need to parse the date string and timezone separately
-          const dateStr = startDateStr.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/, '$1-$2-$3T$4:$5:$6');
-          startUTC = new Date(dateStr);
-          if (startTz) {
-            // Adjust for timezone offset
-            const tzOffset = new Date().getTimezoneOffset();
-            startUTC.setMinutes(startUTC.getMinutes() + tzOffset);
-          }
-
-          const endDateStr = endMatch[2];
-          const endDateStrFormatted = endDateStr.replace(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})/, '$1-$2-$3T$4:$5:$6');
-          endUTC = new Date(endDateStrFormatted);
-          if (endTz) {
-            // Adjust for timezone offset
-            const tzOffset = new Date().getTimezoneOffset();
-            endUTC.setMinutes(endUTC.getMinutes() + tzOffset);
-          }
-        }
-        
-        return startUTC <= endDate && endUTC >= startDate;
-      } catch (error) {
-        calendarLog('Error processing event: %s', error);
-        return false;
-      }
-    });
-
-    calendarLog('Found %d events in date range', filteredEvents.length);
-
-    return filteredEvents.map((e: DAVCalendarObject) => {
+    return calendarObjects.map((e: DAVCalendarObject) => {
       try {
         if (!e.data) {
           calendarLog('Event data is undefined or null');
