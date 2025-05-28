@@ -1,9 +1,9 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": ".vercel/output/functions",
+    "outDir": "dist",
     "rootDir": ".",
-    "module": "ESNext",
+    "module": "CommonJS",
     "moduleResolution": "node",
     "target": "ES2020",
     "esModuleInterop": true
