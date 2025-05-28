@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": "dist",
+    "outDir": ".vercel/output/functions",
     "rootDir": ".",
     "module": "ESNext",
     "moduleResolution": "node",
