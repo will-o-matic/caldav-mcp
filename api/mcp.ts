@@ -16,7 +16,7 @@ export default async function handler(req: any, res: any) {
   if (sessionId && transports[sessionId]) {
     // Reuse existing transport
     transport = transports[sessionId];
-  } else if (!sessionId && isInitializeRequest(req.body)) {
+  } else if (isInitializeRequest(req.body)) {
     // New initialization request
     transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
